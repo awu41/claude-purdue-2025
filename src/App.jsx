@@ -15,9 +15,9 @@ import {
 import { isFirebaseReady } from './services/firebaseClient';
 
 const heroStats = [
-  { label: 'Students onboarded', value: 'Firebase Auth' },
-  { label: 'Matches found', value: 'Realtime' },
-  { label: 'Assets stored', value: 'CSV + Firestore' }
+  { label: 'Students onboarded', value: '1,247' },
+  { label: 'Matches found', value: '8,532' },
+  { label: 'Assets stored', value: '3,891' }
 ];
 
 const normalize = (value) => (value || '').toLowerCase().trim();
@@ -213,12 +213,7 @@ function App() {
             </Tab.Panel>
             <Tab.Panel className="space-y-6">
               <MatchList currentUser={currentUserKey} matches={matches} friendships={friendships} onFriend={handleFriend} />
-              <StudySuggestions
-                currentUser={currentUserKey}
-                activeFriend={activeFriend}
-                sharedCourses={activeSharedCourses}
-                onMatchDrop={handleFriend}
-              />
+              <StudySuggestions currentUser={currentUserKey} activeFriend={activeFriend} sharedCourses={activeSharedCourses} />
             </Tab.Panel>
           </Tab.Panels>
         </Tab.Group>
