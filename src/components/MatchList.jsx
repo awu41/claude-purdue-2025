@@ -1,5 +1,16 @@
 const MatchList = ({ currentUser, matches = [], friendships = {}, onFriend }) => {
   const userFriends = friendships[currentUser] || [];
+  const buildDragPayload = (match) => JSON.stringify({
+    username: match.username,
+    sharedCourses: match.sharedCourses
+  });
+
+  const handleDragStart = (event, match) => {
+    if (!currentUser) return;
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('application/json', buildDragPayload(match));
+    event.dataTransfer.setData('text/plain', `@${match.username}`);
+  };
 
   if (!currentUser) {
     return (
@@ -24,7 +35,10 @@ const MatchList = ({ currentUser, matches = [], friendships = {}, onFriend }) =>
         return (
           <article
             key={match.username}
-            className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-5 shadow-lg shadow-slate-950/40"
+            className="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-5 shadow-lg shadow-slate-950/40 cursor-grab active:cursor-grabbing"
+            draggable
+            onDragStart={(event) => handleDragStart(event, match)}
+            title="Drag into Study space intel to generate recs"
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>

@@ -4,11 +4,12 @@ import { STORAGE_KEYS, readFromStorage, writeToStorage } from '../utils/storage'
 
 const DEFAULT_ORIGIN = 'Purdue Memorial Union, West Lafayette, IN';
 
-const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [] }) => {
+const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [], onMatchDrop }) => {
   const [origin, setOrigin] = useState(() => readFromStorage(STORAGE_KEYS.ORIGIN, DEFAULT_ORIGIN));
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState([]);
+  const [isDropActive, setIsDropActive] = useState(false);
 
   useEffect(() => {
     writeToStorage(STORAGE_KEYS.ORIGIN, origin);
@@ -48,6 +49,39 @@ const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [] }) => 
     };
   }, [courseSignature, currentUser, activeFriend, origin, sharedCourses]);
 
+  const canAcceptPayload = (event) => {
+    if (!currentUser) return false;
+    const types = Array.from(event?.dataTransfer?.types || []);
+    return types.includes('application/json');
+  };
+
+  const handleDragOver = (event) => {
+    if (!canAcceptPayload(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setIsDropActive(true);
+  };
+
+  const handleDragLeave = (event) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setIsDropActive(false);
+  };
+
+  const handleDrop = (event) => {
+    if (!canAcceptPayload(event)) return;
+    event.preventDefault();
+    setIsDropActive(false);
+    if (!onMatchDrop) return;
+    try {
+      const payload = JSON.parse(event.dataTransfer.getData('application/json') || '{}');
+      if (payload.username && Array.isArray(payload.sharedCourses)) {
+        onMatchDrop(payload.username, payload.sharedCourses);
+      }
+    } catch (dropError) {
+      console.warn('Unable to parse dropped friend card', dropError);
+    }
+  };
+
   if (!currentUser) {
     return (
       <div className="rounded-3xl border border-slate-800/90 bg-slate-900/60 p-6 text-slate-300">
@@ -57,7 +91,14 @@ const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [] }) => 
   }
 
   return (
-    <div className="rounded-3xl border border-slate-800/80 bg-gradient-to-br from-slate-900/80 to-slate-950/70 p-6 shadow-2xl shadow-slate-950/50">
+    <div
+      className={`rounded-3xl border ${
+        isDropActive ? 'border-emerald-400/60 ring-2 ring-emerald-500/40' : 'border-slate-800/80'
+      } bg-gradient-to-br from-slate-900/80 to-slate-950/70 p-6 shadow-2xl shadow-slate-950/50`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Realtime concierge</p>
@@ -79,8 +120,12 @@ const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [] }) => 
       </div>
 
       {!activeFriend && (
-        <div className="mt-6 rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 p-6 text-slate-400">
-          Friend a student to pull in contextual study spaces.
+        <div
+          className={`mt-6 rounded-2xl border border-dashed ${
+            isDropActive ? 'border-emerald-400/60 bg-emerald-500/5 text-emerald-200' : 'border-slate-700 bg-slate-950/40 text-slate-400'
+          } p-6`}
+        >
+          Drag a shared buddy card here to pull in contextual study spaces.
         </div>
       )}
 

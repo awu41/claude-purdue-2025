@@ -213,7 +213,12 @@ function App() {
             </Tab.Panel>
             <Tab.Panel className="space-y-6">
               <MatchList currentUser={currentUserKey} matches={matches} friendships={friendships} onFriend={handleFriend} />
-              <StudySuggestions currentUser={currentUserKey} activeFriend={activeFriend} sharedCourses={activeSharedCourses} />
+              <StudySuggestions
+                currentUser={currentUserKey}
+                activeFriend={activeFriend}
+                sharedCourses={activeSharedCourses}
+                onMatchDrop={handleFriend}
+              />
             </Tab.Panel>
           </Tab.Panels>
         </Tab.Group>
