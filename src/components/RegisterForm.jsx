@@ -2,30 +2,42 @@ import { useEffect, useState } from 'react';
 
 const initialState = {
   username: '',
+  email: '',
   password: ''
 };
 
-const RegisterForm = ({ onRegister, currentUser }) => {
+const RegisterForm = ({ onRegister, onSignOut, currentProfile, isLoading }) => {
   const [formData, setFormData] = useState(initialState);
   const [feedback, setFeedback] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (currentUser) {
-      setFormData((prev) => ({ ...prev, username: currentUser }));
+    if (currentProfile) {
+      setFormData((prev) => ({
+        ...prev,
+        username: currentProfile.username || prev.username,
+        email: currentProfile.email || prev.email
+      }));
     }
-  }, [currentUser]);
+  }, [currentProfile]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    const result = onRegister(formData);
-    setFeedback(result);
-    if (result.success) {
+    setFeedback(null);
+    setSubmitting(true);
+    try {
+      const result = await onRegister(formData);
+      setFeedback({ success: true, message: result?.message || (result?.isNew ? 'Profile created.' : 'Signed in.') });
       setFormData((prev) => ({ ...prev, password: '' }));
+    } catch (error) {
+      setFeedback({ success: false, message: error.message || 'Unable to authenticate right now.' });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -35,18 +47,30 @@ const RegisterForm = ({ onRegister, currentUser }) => {
         <p className="text-sm uppercase tracking-wide text-slate-500">Step 1</p>
         <h2 className="text-2xl font-semibold text-white">Register or sign in</h2>
         <p className="text-sm text-slate-400 mt-2">
-          Credentials stay in the browser via <code className="text-amber-300">localStorage</code>. Use them to persist your study identity.
+          Accounts sync securely via <code className="text-amber-300">Firebase Auth</code> so the same profile can be reused across devices.
         </p>
       </div>
       <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm text-slate-300">
-          Username
+          Purdue username
           <input
             required
             name="username"
             value={formData.username}
             onChange={handleChange}
             placeholder="purdue_student"
+            className="rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-base text-white focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+          />
+        </label>
+        <label className="flex flex-col gap-2 text-sm text-slate-300">
+          Purdue email
+          <input
+            required
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="student@purdue.edu"
             className="rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-base text-white focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
           />
         </label>
@@ -66,17 +90,29 @@ const RegisterForm = ({ onRegister, currentUser }) => {
         <div className="sm:col-span-2 flex items-center justify-between gap-4">
           <button
             type="submit"
-            className="inline-flex items-center justify-center rounded-2xl bg-emerald-400/90 px-6 py-3 font-semibold text-emerald-950 transition hover:bg-emerald-300 hover:shadow-lg hover:shadow-emerald-500/30"
+            disabled={submitting || isLoading}
+            className="inline-flex items-center justify-center rounded-2xl bg-emerald-400/90 px-6 py-3 font-semibold text-emerald-950 transition hover:bg-emerald-300 hover:shadow-lg hover:shadow-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Save to browser
+            {submitting ? 'Saving…' : 'Sync with Firebase'}
           </button>
-          {currentUser ? (
-            <p className="text-sm text-emerald-300">Signed in as {currentUser}</p>
+          {currentProfile ? (
+            <div className="flex flex-col items-end text-sm text-emerald-200">
+              <span>Signed in as {currentProfile.username || currentProfile.email}</span>
+              <span className="text-xs text-slate-400">{currentProfile.email}</span>
+            </div>
           ) : (
             <p className="text-sm text-slate-400">No active user</p>
           )}
         </div>
       </form>
+      {currentProfile && (
+        <button
+          onClick={onSignOut}
+          className="mt-4 text-sm text-slate-400 underline-offset-4 hover:text-white hover:underline"
+        >
+          Sign out
+        </button>
+      )}
       {feedback && (
         <div
           className={`mt-4 rounded-xl px-4 py-3 text-sm ${

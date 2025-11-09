@@ -52,18 +52,21 @@ const normalizeRow = (row = {}, idx) => {
   };
 };
 
-const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
+const CourseUpload = ({ currentProfile, courses = [], onCoursesParsed }) => {
   const [isParsing, setIsParsing] = useState(false);
   const [statusRows, setStatusRows] = useState([]);
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState('');
+  const [uploadFeedback, setUploadFeedback] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
-  const emptyState = !currentUser;
+  const emptyState = !currentProfile;
 
   const courseCountLabel = useMemo(() => {
     if (!courses.length) return 'No courses stored yet';
-    return `${courses.length} course${courses.length > 1 ? 's' : ''} stored for ${currentUser}`;
-  }, [courses.length, currentUser]);
+    const displayName = currentProfile?.username || currentProfile?.email || 'you';
+    return `${courses.length} course${courses.length > 1 ? 's' : ''} stored for ${displayName}`;
+  }, [courses.length, currentProfile]);
 
   const handleFileUpload = (event) => {
     const file = event.target.files?.[0];
@@ -71,6 +74,7 @@ const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
     setFileName(file.name);
     setError('');
     setStatusRows([]);
+    setUploadFeedback(null);
 
     if (emptyState) {
       setError('Please register or sign in before uploading a schedule.');
@@ -81,7 +85,7 @@ const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         const mapped = results.data.map((row, idx) => normalizeRow(row, idx));
         const rawStatuses = mapped.map((item) => ({ ...item.status }));
         const courseTracker = {};
@@ -150,14 +154,31 @@ const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
         });
 
         setStatusRows(statuses);
-        setIsParsing(false);
 
         if (!dedupedCourses.length) {
+          setIsParsing(false);
           setError('No valid course rows detected. Check column names or data quality.');
           return;
         }
 
-        onCoursesParsed(dedupedCourses, statuses);
+        try {
+          setError('');
+          setUploading(true);
+          await onCoursesParsed(dedupedCourses, file);
+          setUploadFeedback({
+            success: true,
+            message: `Synced ${dedupedCourses.length} class${dedupedCourses.length > 1 ? 'es' : ''} to Firebase.`
+          });
+        } catch (syncError) {
+          console.error(syncError);
+          setUploadFeedback({
+            success: false,
+            message: syncError.message || 'Failed to sync with Firebase. Try again.'
+          });
+        } finally {
+          setIsParsing(false);
+          setUploading(false);
+        }
       },
       error: (parseError) => {
         console.error(parseError);
@@ -173,7 +194,7 @@ const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
         <p className="text-sm uppercase tracking-wide text-slate-500">Step 2</p>
         <h2 className="text-2xl font-semibold text-white">Upload your MyPurdue schedule</h2>
         <p className="text-sm text-slate-400">
-          Accepts CSV exports. Expected columns: {friendlyFields.join(', ')}. Rows persist to <code className="text-amber-300">localStorage</code>.
+          Accepts CSV exports. Expected columns: {friendlyFields.join(', ')}. Parsed rows sync to <code className="text-amber-300">Firebase</code> with the original file attached.
         </p>
       </div>
 
@@ -186,21 +207,47 @@ const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
           disabled={emptyState}
         />
         <span className="text-lg font-medium text-white">{emptyState ? 'Sign in to enable uploads' : 'Drop a CSV or click to browse'}</span>
-        <span className="text-sm text-slate-400">{fileName || 'Max 2MB • parsed fully in-browser via PapaParse'}</span>
+        <span className="text-sm text-slate-400">
+          {fileName || currentProfile?.csvFileName || 'Max 2MB • parsed fully in-browser via PapaParse'}
+        </span>
         <div className="mx-auto mt-2 flex gap-2 text-xs text-slate-500">
           <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-emerald-300">{courseCountLabel}</span>
         </div>
       </label>
 
-      {isParsing && (
-        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-          Parsing CSV…
+      {currentProfile?.csvFileName && (
+        <div className="mt-4 rounded-2xl border border-slate-800/70 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
+          <p>
+            Last upload: <span className="font-semibold text-white">{currentProfile.csvFileName}</span>
+          </p>
+          {currentProfile.csvUrl && (
+            <a
+              href={currentProfile.csvUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-emerald-300 hover:text-emerald-200"
+            >
+              View on Firebase Storage ↗
+            </a>
+          )}
         </div>
       )}
 
-      {error && (
+      {(isParsing || uploading) && (
+        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          {isParsing ? 'Parsing CSV…' : 'Uploading to Firebase…'}
+        </div>
+      )}
+
+      {(error || (uploadFeedback && !uploadFeedback.success)) && (
         <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          {error}
+          {error || uploadFeedback?.message}
+        </div>
+      )}
+
+      {uploadFeedback && uploadFeedback.success && (
+        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          {uploadFeedback.message}
         </div>
       )}
 
@@ -233,7 +280,9 @@ const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
         <div className="mt-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">Stored schedule</h3>
-            <p className="text-xs text-slate-500">Auto-saved for {currentUser}</p>
+            <p className="text-xs text-slate-500">
+              Cloud synced for {currentProfile?.username || currentProfile?.email}
+            </p>
           </div>
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             {courses.map((course) => (

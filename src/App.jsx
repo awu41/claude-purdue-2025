@@ -4,13 +4,20 @@ import RegisterForm from './components/RegisterForm';
 import CourseUpload from './components/CourseUpload';
 import MatchList from './components/MatchList';
 import StudySuggestions from './components/StudySuggestions';
-import { readFromStorage, removeFromStorage, STORAGE_KEYS, writeToStorage } from './utils/storage';
-import { seedCourses, seedFriendships, seedUsers } from './data/seeds';
+import { readFromStorage, STORAGE_KEYS, writeToStorage } from './utils/storage';
+import {
+  listenToAuth,
+  logout,
+  registerOrSignIn,
+  saveCoursesForUser,
+  subscribeToProfiles
+} from './services/profileService';
+import { isFirebaseReady } from './services/firebaseClient';
 
 const heroStats = [
-  { label: 'Students onboarded', value: 'Frontend-only' },
+  { label: 'Students onboarded', value: 'Firebase Auth' },
   { label: 'Matches found', value: 'Realtime' },
-  { label: 'API calls saved', value: '100% client' }
+  { label: 'Assets stored', value: 'CSV + Firestore' }
 ];
 
 const normalize = (value) => (value || '').toLowerCase().trim();
@@ -35,7 +42,7 @@ const findSharedCourses = (currentCourses, otherCourses) => {
 };
 
 const computeMatches = (currentUser, courseMap) => {
-  const currentCourses = courseMap[currentUser] || [];
+  const currentCourses = currentUser ? courseMap[currentUser] || [] : [];
   if (!currentCourses.length) return [];
 
   return Object.entries(courseMap)
@@ -50,70 +57,107 @@ const computeMatches = (currentUser, courseMap) => {
 };
 
 function App() {
-  const [users, setUsers] = useState(() => readFromStorage(STORAGE_KEYS.USERS, seedUsers));
-  const [coursesByUser, setCoursesByUser] = useState(() => readFromStorage(STORAGE_KEYS.COURSES, seedCourses));
-  const [friendships, setFriendships] = useState(() => readFromStorage(STORAGE_KEYS.FRIENDSHIPS, seedFriendships));
-  const [currentUser, setCurrentUser] = useState(() => readFromStorage(STORAGE_KEYS.CURRENT_USER, ''));
+  const [friendships, setFriendships] = useState(() => readFromStorage(STORAGE_KEYS.FRIENDSHIPS, {}));
   const [activeFriend, setActiveFriend] = useState(null);
   const [activeSharedCourses, setActiveSharedCourses] = useState([]);
-
-  useEffect(() => {
-    writeToStorage(STORAGE_KEYS.USERS, users);
-  }, [users]);
-
-  useEffect(() => {
-    writeToStorage(STORAGE_KEYS.COURSES, coursesByUser);
-  }, [coursesByUser]);
+  const [authUser, setAuthUser] = useState(null);
+  const [profiles, setProfiles] = useState([]);
+  const [authLoading, setAuthLoading] = useState(true);
+  const firebaseEnabled = isFirebaseReady();
 
   useEffect(() => {
     writeToStorage(STORAGE_KEYS.FRIENDSHIPS, friendships);
   }, [friendships]);
 
   useEffect(() => {
-    if (currentUser) {
-      writeToStorage(STORAGE_KEYS.CURRENT_USER, currentUser);
-    } else {
-      removeFromStorage(STORAGE_KEYS.CURRENT_USER);
+    if (!firebaseEnabled) {
+      setAuthLoading(false);
+      return undefined;
     }
-  }, [currentUser]);
+    const unsubscribe = listenToAuth((user) => {
+      if (user) {
+        setAuthUser({
+          uid: user.uid,
+          email: user.email,
+          username: user.displayName || user.email?.split('@')[0] || 'Boilermaker'
+        });
+      } else {
+        setAuthUser(null);
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe;
+  }, [firebaseEnabled]);
 
-  const matches = useMemo(() => computeMatches(currentUser, coursesByUser), [currentUser, coursesByUser]);
-  const storedCourses = currentUser ? coursesByUser[currentUser] || [] : [];
-
-  const handleRegister = ({ username, password }) => {
-    if (!username || !password) {
-      return { success: false, message: 'Username and password are required.' };
+  useEffect(() => {
+    if (!firebaseEnabled || !authUser) {
+      setProfiles([]);
+      return;
     }
+    const unsubscribe = subscribeToProfiles((records) => {
+      setProfiles(records);
+    });
+    return unsubscribe;
+  }, [authUser]);
 
-    const existing = users.find((user) => user.username === username);
-    if (existing && existing.password !== password) {
-      return { success: false, message: 'Password mismatch. Use a different username or correct password.' };
+  const currentProfile = useMemo(
+    () => profiles.find((entry) => entry.uid === authUser?.uid) || null,
+    [profiles, authUser]
+  );
+
+  const currentUserKey = useMemo(() => {
+    if (currentProfile) {
+      return currentProfile.username || currentProfile.email || currentProfile.uid;
     }
-
-    if (!existing) {
-      setUsers((prev) => [...prev.filter((user) => user.username !== username), { username, password }]);
+    if (authUser) {
+      return authUser.username || authUser.email || authUser.uid;
     }
+    return '';
+  }, [authUser, currentProfile]);
 
-    setCurrentUser(username);
-    return { success: true, message: existing ? 'Welcome back!' : 'Profile saved locally.' };
+  const courseMap = useMemo(() => {
+    return profiles.reduce((acc, profile) => {
+      const key = profile.username || profile.email || profile.uid;
+      acc[key] = profile.courses || [];
+      return acc;
+    }, {});
+  }, [profiles]);
+
+  const matches = useMemo(() => computeMatches(currentUserKey, courseMap), [currentUserKey, courseMap]);
+  const storedCourses = currentProfile?.courses || [];
+
+  const handleRegister = async ({ username, email, password }) => {
+    if (!firebaseEnabled) {
+      throw new Error('Firebase is not configured. Fill in .env to enable backend sync.');
+    }
+    const result = await registerOrSignIn({ username, email, password });
+    return {
+      ...result,
+      message: result.isNew ? 'Firebase profile created.' : 'Signed in successfully.'
+    };
   };
 
-  const handleCoursesParsed = (courses) => {
-    if (!currentUser) return;
-    setCoursesByUser((prev) => ({
-      ...prev,
-      [currentUser]: courses
-    }));
+  const handleCoursesParsed = async (courses, file) => {
+    if (!firebaseEnabled || !currentProfile) {
+      throw new Error('Please sign in before uploading a schedule.');
+    }
+    await saveCoursesForUser({
+      uid: currentProfile.uid,
+      username: currentProfile.username,
+      email: currentProfile.email,
+      courses,
+      file
+    });
   };
 
   const handleFriend = (friendUsername, sharedCourses) => {
-    if (!currentUser) return;
+    if (!currentUserKey) return;
     setFriendships((prev) => {
-      const currentFriends = Array.from(new Set([...(prev[currentUser] || []), friendUsername]));
-      const reciprocol = Array.from(new Set([...(prev[friendUsername] || []), currentUser]));
+      const currentFriends = Array.from(new Set([...(prev[currentUserKey] || []), friendUsername]));
+      const reciprocol = Array.from(new Set([...(prev[friendUsername] || []), currentUserKey]));
       return {
         ...prev,
-        [currentUser]: currentFriends,
+        [currentUserKey]: currentFriends,
         [friendUsername]: reciprocol
       };
     });
@@ -130,10 +174,10 @@ function App() {
             Purdue Study Graph
           </p>
           <h1 className="mt-6 text-4xl font-semibold leading-tight md:text-5xl">
-            Match classmates. Unlock study spaces. <span className="text-emerald-300">Zero backend.</span>
+            Match classmates. Unlock study spaces. <span className="text-emerald-300">Firebase-backed.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-3xl text-lg text-slate-300">
-            MVP starter built with React, Tailwind, HeadlessUI tabs, PapaParse, localStorage, and mocked Purdue GENAI + Google Maps integrations for frontend-only deployments.
+            React + Tailwind MVP wired to Firebase Auth, Firestore, and Storage. PapaParse still runs locally, but uploads sync to the cloud with the original CSV attached.
           </p>
           <div className="mt-8 grid gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur md:grid-cols-3">
             {heroStats.map((stat) => (
@@ -146,7 +190,7 @@ function App() {
         </header>
       </div>
 
-      <main className="mx-auto mt-12 max-w-6xl px-4">
+  <main className="mx-auto mt-12 max-w-6xl px-4">
         <Tab.Group>
           <Tab.List className="grid grid-cols-2 gap-4 rounded-3xl border border-slate-800/80 bg-slate-900/70 p-2 text-sm font-semibold text-slate-400">
             {['Register & Upload', 'Matchmaking & Spaces'].map((tab) => (
@@ -162,12 +206,17 @@ function App() {
           </Tab.List>
           <Tab.Panels className="mt-6 space-y-6">
             <Tab.Panel className="space-y-6">
-              <RegisterForm onRegister={handleRegister} currentUser={currentUser} />
-              <CourseUpload currentUser={currentUser} courses={storedCourses} onCoursesParsed={handleCoursesParsed} />
+              <RegisterForm
+                onRegister={handleRegister}
+                onSignOut={logout}
+                currentProfile={currentProfile}
+                isLoading={authLoading}
+              />
+              <CourseUpload currentProfile={currentProfile} courses={storedCourses} onCoursesParsed={handleCoursesParsed} />
             </Tab.Panel>
             <Tab.Panel className="space-y-6">
-              <MatchList currentUser={currentUser} matches={matches} friendships={friendships} onFriend={handleFriend} />
-              <StudySuggestions currentUser={currentUser} activeFriend={activeFriend} sharedCourses={activeSharedCourses} />
+              <MatchList currentUser={currentUserKey} matches={matches} friendships={friendships} onFriend={handleFriend} />
+              <StudySuggestions currentUser={currentUserKey} activeFriend={activeFriend} sharedCourses={activeSharedCourses} />
             </Tab.Panel>
           </Tab.Panels>
         </Tab.Group>
