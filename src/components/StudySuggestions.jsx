@@ -166,7 +166,6 @@ const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [], onMat
                   <p className="text-xs uppercase tracking-wide text-slate-500">{suggestion.courseName}</p>
                   <h3 className="text-xl font-semibold text-white">{suggestion.locationName}</h3>
                 </div>
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">{suggestion.distanceText}</span>
               </div>
               <p className="mt-1 text-xs text-slate-400">Class near {suggestion.classLocation}</p>
               <ul className="mt-3 space-y-1 text-sm text-slate-300">
@@ -186,7 +185,6 @@ const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [], onMat
                 >
                   Open in Google Maps ↗
                 </a>
-                <p className="text-xs text-slate-500">Distance source: {suggestion.distanceSource}</p>
               </div>
             </article>
           ))}
