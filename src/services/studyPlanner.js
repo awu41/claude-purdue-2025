@@ -64,8 +64,44 @@ const parseAiResponse = (text = '') => {
     .filter(Boolean);
 };
 
+const callGenaiCompletion = async ({ token, role = 'user', content }) => {
+  if (!token) {
+    throw new Error('GENAI token is missing');
+  }
+
+  const response = await fetch(GENAI_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'llama3.1:latest',
+      messages: [{ role, content }],
+      stream: false
+    })
+  });
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(`GENAI error ${response.status}: ${raw}`);
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+const extractCompletionText = (payload) => {
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload;
+  return payload?.choices?.[0]?.message?.content || '';
+};
+
 const fetchAiSuggestions = async (course) => {
-  const apiKey = import.meta.env?.VITE_GENAI_API_KEY;
+  const apiKey = import.meta.env?.VITE_GENAI_API_KEY || import.meta.env?.VITE_GENAI_TOKEN;
   const prompt = `I have a class at ${course.location || 'Purdue campus'}, find me study spaces within a 0.25 mile radius and list pros of each location`;
 
   if (!apiKey) {
@@ -73,25 +109,8 @@ const fetchAiSuggestions = async (course) => {
   }
 
   try {
-    const response = await fetch(GENAI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'llama3.1:latest',
-        messages: [{ role: 'user', content: prompt }],
-        stream: false
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`GENAI error ${response.status}`);
-    }
-
-    const payload = await response.json();
-    const content = payload?.choices?.[0]?.message?.content || '';
+    const payload = await callGenaiCompletion({ token: apiKey, role: 'user', content: prompt });
+    const content = extractCompletionText(payload);
     const parsed = parseAiResponse(content);
     return parsed.length ? parsed : mockStudySpaces(course);
   } catch (error) {
