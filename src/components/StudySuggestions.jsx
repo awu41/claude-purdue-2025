@@ -103,9 +103,6 @@ const StudySuggestions = ({ currentUser, activeFriend, sharedCourses = [], onMat
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Realtime concierge</p>
           <h2 className="text-2xl font-semibold text-white">Study space intel</h2>
-          <p className="text-sm text-slate-400">
-            Powered by Purdue GENAI (mocked without API keys) + Google Maps distance matrix. Runs client-side after friending.
-          </p>
         </div>
         <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
           <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Your starting point</label>
