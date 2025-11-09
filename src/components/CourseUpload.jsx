@@ -83,18 +83,81 @@ const CourseUpload = ({ currentUser, courses = [], onCoursesParsed }) => {
       skipEmptyLines: true,
       complete: (results) => {
         const mapped = results.data.map((row, idx) => normalizeRow(row, idx));
-        const successfulCourses = mapped.filter((item) => item.status.ok).map((item) => item.course);
-        const statuses = mapped.map((item) => item.status);
+        const rawStatuses = mapped.map((item) => ({ ...item.status }));
+        const courseTracker = {};
+        const dedupedCourses = [];
+        const statuses = rawStatuses.map(() => null);
+
+        mapped.forEach(({ course }, idx) => {
+          const baseStatus = rawStatuses[idx];
+
+          if (!baseStatus.ok) {
+            statuses[idx] = baseStatus;
+            return;
+          }
+
+          const courseName = (course.courseName || '').trim();
+          const hasCourseName = Boolean(courseName);
+          const hasInstructorTag = /\(instr\)/i.test(course.professor || '');
+
+          if (!hasCourseName) {
+            dedupedCourses.push(course);
+            statuses[idx] = baseStatus;
+            return;
+          }
+
+          const key = courseName.toLowerCase();
+          const existing = courseTracker[key];
+
+          if (!existing) {
+            courseTracker[key] = {
+              index: dedupedCourses.length,
+              hasInstr: hasInstructorTag,
+              statusIndex: idx
+            };
+            dedupedCourses.push(course);
+            statuses[idx] = baseStatus;
+            return;
+          }
+
+          if (!existing.hasInstr && hasInstructorTag) {
+            dedupedCourses[existing.index] = course;
+            courseTracker[key] = {
+              index: existing.index,
+              hasInstr: true,
+              statusIndex: idx
+            };
+
+            statuses[existing.statusIndex] = {
+              ...statuses[existing.statusIndex],
+              ok: false,
+              issues: ['Duplicate class replaced by instructor-led section']
+            };
+
+            statuses[idx] = {
+              ...baseStatus,
+              ok: true,
+              issues: ['Preferred instructor-led section kept']
+            };
+            return;
+          }
+
+          statuses[idx] = {
+            ...baseStatus,
+            ok: false,
+            issues: ['Duplicate class removed (same course name)']
+          };
+        });
 
         setStatusRows(statuses);
         setIsParsing(false);
 
-        if (!successfulCourses.length) {
+        if (!dedupedCourses.length) {
           setError('No valid course rows detected. Check column names or data quality.');
           return;
         }
 
-        onCoursesParsed(successfulCourses, statuses);
+        onCoursesParsed(dedupedCourses, statuses);
       },
       error: (parseError) => {
         console.error(parseError);
