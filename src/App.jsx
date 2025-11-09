@@ -171,10 +171,10 @@ function App() {
         <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-emerald-500/20 blur-3xl" />
         <header className="relative mx-auto max-w-6xl px-4 pt-16 text-center text-white">
           <p className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-200">
-            Purdue Study Graph
+            Purdue Study Buddy
           </p>
           <h1 className="mt-6 text-4xl font-semibold leading-tight md:text-5xl">
-            Match classmates. Unlock study spaces. <span className="text-emerald-300">Hassle Free.</span>
+            Find new study partners. Discover study spaces. <span className="text-emerald-300">Boiler Up.</span>
           </h1>
           <div className="mt-8 grid gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur md:grid-cols-3">
             {heroStats.map((stat) => (
