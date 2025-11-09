@@ -176,9 +176,6 @@ function App() {
           <h1 className="mt-6 text-4xl font-semibold leading-tight md:text-5xl">
             Match classmates. Unlock study spaces. <span className="text-emerald-300">Firebase-backed.</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-3xl text-lg text-slate-300">
-            React + Tailwind MVP wired to Firebase Auth, Firestore, and Storage. PapaParse still runs locally, but uploads sync to the cloud with the original CSV attached.
-          </p>
           <div className="mt-8 grid gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur md:grid-cols-3">
             {heroStats.map((stat) => (
               <div key={stat.label}>
